@@ -118,11 +118,11 @@
             <div class="flex justify-center items-center space-x-8 md:space-x-12">
                 <div class="text-center">
                     <p id="bounty-counter" class="text-4xl font-bold text-blue-600">0</p>
-                    <p class="text-sm text-slate-500">in Bug Bounties</p>
+                    <p class="text-sm text-slate-500">in Bug Bounties Awarded</p>
                 </div>
                 <div class="text-center">
                     <p id="sites-counter" class="text-4xl font-bold text-blue-600">0M</p>
-                    <p class="text-sm text-slate-500">Sites Exposed by one flaw</p>
+                    <p class="text-sm text-slate-500">Sites Exposed by a Single Flaw</p>
                 </div>
             </div>
         </section>
@@ -190,28 +190,28 @@
                 </div>
                 <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <h4 class="font-bold text-lg text-slate-700">Akamai CDN</h4>
+                        <p class="text-sm text-slate-600">An `Expect`-based attack (CVE-2025-32094) led to <strong>74 separate bounty reports totaling over $221,000</strong>. It allowed serving arbitrary content to users of sites like `auth.lastpass.com`.</p>
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
                         <h4 class="font-bold text-lg text-slate-700">Cloudflare</h4>
                         <p class="text-sm text-slate-600">An internal desync exposed over <strong>24 million websites</strong> to potential takeover. A single flaw in the infrastructure had a catastrophic blast radius.</p>
                     </div>
                     <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <h4 class="font-bold text-lg text-slate-700">Akamai CDN</h4>
-                        <p class="text-sm text-slate-600">An `Expect`-based attack allowed serving arbitrary content to users of sites like <strong>auth.lastpass.com</strong>, a highly sensitive target.</p>
-                    </div>
-                    <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <h4 class="font-bold text-lg text-slate-700">Netlify CDN</h4>
-                        <p class="text-sm text-slate-600">A Response Queue Poisoning (RQP) vulnerability allowed an attacker to hijack and read responses intended for <strong>any other website</strong> on the platform.</p>
+                        <h4 class="font-bold text-lg text-slate-700">Netlify CDN (The Paradox)</h4>
+                        <p class="text-sm text-slate-600">A critical Response Queue Poisoning flaw allowed hijacking responses from <strong>any other website</strong> on the platform, yet was deemed "out of scope" of the bug bounty program, highlighting a dangerous blind spot.</p>
                     </div>
                     <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
                         <h4 class="font-bold text-lg text-slate-700">Gitlab</h4>
                         <p class="text-sm text-slate-600">A desync on a bug bounty server was used to steal a video of an unpatched zero-day vulnerability, demonstrating the potential for <strong>corporate espionage</strong>.</p>
                     </div>
-                    <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <h4 class="font-bold text-lg text-slate-700">AWS ALB + IIS</h4>
-                        <p class="text-sm text-slate-600">A known desync was intentionally not patched by AWS to maintain compatibility with "ancient" clients, demonstrating how <strong>"compatibility debt"</strong> perpetuates insecurity.</p>
+                     <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <h4 class="font-bold text-lg text-slate-700">T-Mobile</h4>
+                        <p class="text-sm text-slate-600">A desync vulnerability on a <strong>staging domain</strong> was still considered critical enough to be awarded a <strong>$12,000 bounty</strong>, showing the perceived risk even in non-production environments.</p>
                     </div>
                     <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <h4 class="font-bold text-lg text-slate-700">PayPal</h4>
-                        <p class="text-sm text-slate-600">Prior research showed desync attacks successfully compromising PayPal's login page, proving viability against <strong>top-tier financial targets</strong>.</p>
+                        <h4 class="font-bold text-lg text-slate-700">AWS (Compatibility Debt)</h4>
+                        <p class="text-sm text-slate-600">A known desync in AWS ALB + IIS was intentionally not patched to maintain compatibility with "ancient" clients, demonstrating how <strong>"compatibility debt"</strong> perpetuates insecurity for all customers.</p>
                     </div>
                 </div>
             </section>
@@ -294,21 +294,23 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const bountyData = {
-                labels: ['Cloudflare', 'Akamai', 'T-Mobile (Staging)', 'Gitlab'],
+                labels: ['Akamai (Aggregated)', 'T-Mobile (Staging)', 'Cloudflare', 'Gitlab', 'Other Targets'],
                 datasets: [{
                     label: 'Bug Bounty Awarded ($)',
-                    data: [7000, 9000, 12000, 7000],
+                    data: [221000, 12000, 7000, 7000, 103000],
                     backgroundColor: [
-                        'rgba(59, 130, 246, 0.6)',
                         'rgba(239, 68, 68, 0.6)',
                         'rgba(245, 158, 11, 0.6)',
-                        'rgba(34, 197, 94, 0.6)'
+                        'rgba(59, 130, 246, 0.6)',
+                        'rgba(34, 197, 94, 0.6)',
+                        'rgba(107, 114, 128, 0.6)'
                     ],
                     borderColor: [
-                        'rgba(59, 130, 246, 1)',
                         'rgba(239, 68, 68, 1)',
                         'rgba(245, 158, 11, 1)',
-                        'rgba(34, 197, 94, 1)'
+                        'rgba(59, 130, 246, 1)',
+                        'rgba(34, 197, 94, 1)',
+                         'rgba(107, 114, 128, 1)'
                     ],
                     borderWidth: 1
                 }]
@@ -359,14 +361,15 @@
 
             const animateCounter = (element, target, suffix = '', duration = 2000) => {
                 let start = 0;
-                const stepTime = Math.abs(Math.floor(duration / target));
+                const step = Math.ceil(target / (duration / 16));
                 const timer = setInterval(() => {
-                    start += 1;
-                    element.textContent = start + suffix;
-                    if (start === target) {
+                    start += step;
+                    if (start >= target) {
+                        start = target;
                         clearInterval(timer);
                     }
-                }, stepTime);
+                    element.textContent = start.toLocaleString('en-US') + suffix;
+                }, 16);
             };
             
             const bountyCounter = document.getElementById('bounty-counter');
@@ -375,7 +378,7 @@
             const observer = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
-                        animateCounter(bountyCounter, 350, 'k+');
+                        animateCounter(bountyCounter, 350000, '+');
                         animateCounter(sitesCounter, 24, 'M+');
                         observer.unobserve(entry.target);
                     }
@@ -388,10 +391,11 @@
             const tabContents = document.querySelectorAll('.tab-content');
             tabs.forEach(tab => {
                 tab.addEventListener('click', () => {
-                    tabs.forEach(t => t.classList.remove('active'));
+                    const parent = tab.closest('section');
+                    parent.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
                     tab.classList.add('active');
                     const target = tab.dataset.tab;
-                    tabContents.forEach(content => {
+                    parent.querySelectorAll('.tab-content').forEach(content => {
                         content.classList.remove('active');
                         if (content.id === target) {
                             content.classList.add('active');
