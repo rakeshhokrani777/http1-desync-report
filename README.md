@@ -1,6 +1,6 @@
 # Interactive Report & Analysis: The HTTP/1.1 Desync Endgame
 
-### [View the Live Interactive Report](https://<your-username>.github.io/<your-repo-name>/)
+### [View the Live Interactive Report](https://rakeshhokrani777.github.io/http1-desync-report/)
 
 ---
 
@@ -17,14 +17,6 @@ The goal is to make the core concepts, real-world impact, and necessary solution
 * **Data Visualization:** A chart showcasing the significant bug bounties awarded for these vulnerabilities.
 * **Case Studies:** Summaries of compromises affecting major platforms like Cloudflare, Akamai, and Netlify.
 * **Actionable Recommendations:** Role-based advice for security teams, developers, and the industry at large.
-
----
-
-## Detailed Technical Analysis
-
-*(Here, you can copy and paste the entire Markdown text from the "HTTP/1 Security Flaws Explained" immersive artifact. This will display your detailed analysis directly in the README for visitors to read.)*
-
-<br>
 
 ---
 
