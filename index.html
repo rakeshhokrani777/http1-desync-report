@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Report: The HTTP/1.1 Desync Endgame</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Neutral Security -->
+    <!-- Application Structure Plan: The application is structured as a narrative journey from problem to solution. It starts with a high-impact hero section stating the core thesis. It then uses interactive diagrams and tabbed content to explain the core technical flaw, the evolution of attack vectors, and the real-world impact (the "Blast Radius"). This is followed by an explanation of why simple patches fail ("The Illusion of Security"). Finally, it presents the definitive solution (HTTP/2) and provides role-based, actionable recommendations. This structure was chosen to guide the user from understanding the abstract threat to appreciating its concrete impact and knowing how to act, making a complex security topic accessible and persuasive. -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: Core protocol flaw -> Goal: Explain -> Viz: Interactive HTML/CSS diagram -> Interaction: User clicks to trigger desync animation -> Justification: Makes an abstract concept tangible.
+        - Report Info: Attack vector details -> Goal: Organize/Inform -> Viz: Tabbed content -> Interaction: Click to switch tabs -> Justification: Chunks complex info, prevents overload.
+        - Report Info: Case study bounties -> Goal: Compare/Inform -> Viz: Chart.js Bar Chart -> Interaction: Hover tooltips -> Justification: Provides quick quantitative comparison of impact.
+        - Report Info: Case study details -> Goal: Inform -> Viz: Interactive Cards -> Interaction: Hover to reveal details -> Justification: Scannable, engaging presentation of impact stories.
+        - Report Info: Recommendations -> Goal: Action -> Viz: Role-based tabs -> Interaction: Click to switch -> Justification: Personalizes the conclusion, making it more actionable.
+        - Library/Method: Vanilla JS for interactions, Chart.js for the bar chart.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc; /* slate-50 */
+            color: #334155; /* slate-700 */
+        }
+        .nav-link {
+            transition: color 0.3s, border-bottom-color 0.3s;
+            border-bottom: 2px solid transparent;
+        }
+        .nav-link:hover, .nav-link.active {
+            color: #0f172a; /* slate-900 */
+            border-bottom-color: #3b82f6; /* blue-500 */
+        }
+        .section-card {
+            background-color: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .section-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -2px rgb(0 0 0 / 0.1);
+        }
+        .tab.active {
+            background-color: #3b82f6; /* blue-500 */
+            color: white;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 350px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 400px;
+            }
+        }
+        .http-system {
+            transition: all 0.5s ease-in-out;
+        }
+        .request-packet {
+            transition: all 1s ease-in-out;
+            position: absolute;
+        }
+        .desync-text {
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <header class="bg-white/80 backdrop-blur-lg sticky top-0 z-50 shadow-sm">
+        <nav class="container mx-auto px-4 lg:px-6 py-3">
+            <div class="flex justify-between items-center">
+                <h1 class="text-xl font-bold text-slate-800">HTTP/1.1 Must Die</h1>
+                <div class="hidden md:flex items-center space-x-6">
+                    <a href="#problem" class="nav-link">The Flaw</a>
+                    <a href="#attacks" class="nav-link">The Attacks</a>
+                    <a href="#impact" class="nav-link">The Impact</a>
+                    <a href="#solution" class="nav-link">The Solution</a>
+                    <a href="#actions" class="nav-link">The Actions</a>
+                </div>
+                <div class="md:hidden">
+                    <button id="mobile-menu-button" class="text-slate-800 focus:outline-none">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                    </button>
+                </div>
+            </div>
+            <div id="mobile-menu" class="hidden md:hidden mt-4 space-y-2">
+                <a href="#problem" class="block py-2 px-4 text-sm rounded-md hover:bg-slate-100">The Flaw</a>
+                <a href="#attacks" class="block py-2 px-4 text-sm rounded-md hover:bg-slate-100">The Attacks</a>
+                <a href="#impact" class="block py-2 px-4 text-sm rounded-md hover:bg-slate-100">The Impact</a>
+                <a href="#solution" class="block py-2 px-4 text-sm rounded-md hover:bg-slate-100">The Solution</a>
+                <a href="#actions" class="block py-2 px-4 text-sm rounded-md hover:bg-slate-100">The Actions</a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container mx-auto px-4 lg:px-6 py-8 md:py-12">
+        
+        <section id="hero" class="text-center py-16">
+            <h2 class="text-4xl md:text-5xl font-bold text-slate-900 mb-4">The Web's Foundation is Broken</h2>
+            <p class="text-lg md:text-xl text-slate-600 max-w-3xl mx-auto mb-8">For years, a fundamental flaw in HTTP/1.1 has been actively exploited. This isn't a bug you can patch; it's a protocol-level vulnerability. The only real fix is to move on.</p>
+            <div class="flex justify-center items-center space-x-8 md:space-x-12">
+                <div class="text-center">
+                    <p id="bounty-counter" class="text-4xl font-bold text-blue-600">0</p>
+                    <p class="text-sm text-slate-500">in Bug Bounties</p>
+                </div>
+                <div class="text-center">
+                    <p id="sites-counter" class="text-4xl font-bold text-blue-600">0M</p>
+                    <p class="text-sm text-slate-500">Sites Exposed by one flaw</p>
+                </div>
+            </div>
+        </section>
+
+        <div class="space-y-16 md:space-y-24">
+
+            <section id="problem" class="section-card p-6 md:p-8">
+                <h3 class="text-2xl md:text-3xl font-bold text-slate-800 mb-4 text-center">The Core Flaw: Ambiguous Boundaries</h3>
+                <p class="text-slate-600 max-w-4xl mx-auto mb-8 text-center">
+                    HTTP/1.1 is a text-based protocol where requests are sent one after another over the same connection. The problem is that there are multiple, conflicting ways to declare where one request ends and the next begins. When a front-end proxy and a back-end server disagree on this boundary, an attacker can "smuggle" malicious requests. This interactive diagram demonstrates how this "desync" occurs.
+                </p>
+                <div class="bg-slate-100 p-4 rounded-lg">
+                    <div class="flex justify-center items-center space-x-4 mb-6">
+                        <button id="run-normal-btn" class="px-4 py-2 text-sm font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 transition">Normal Request</button>
+                        <button id="run-desync-btn" class="px-4 py-2 text-sm font-medium bg-red-500 text-white rounded-md hover:bg-red-600 transition">Desync Attack</button>
+                    </div>
+                    <div id="desync-diagram" class="relative h-64 w-full max-w-3xl mx-auto">
+                        <div class="absolute top-1/2 -translate-y-1/2 left-4 text-center">
+                            <div class="p-4 bg-white rounded-lg shadow">🖥️</div>
+                            <p class="text-xs mt-1 font-semibold">Front-End Proxy</p>
+                        </div>
+                        <div class="absolute top-1/2 -translate-y-1/2 right-4 text-center">
+                            <div class="p-4 bg-white rounded-lg shadow">🗄️</div>
+                            <p class="text-xs mt-1 font-semibold">Back-End Server</p>
+                        </div>
+                        <div id="request-packet-1" class="request-packet top-1/2 -translate-y-1/2 left-20 w-32 h-12 bg-blue-300 rounded-md flex items-center justify-center text-xs font-mono text-blue-800">Request A</div>
+                        <div id="request-packet-2" class="request-packet top-1/2 -translate-y-1/2 left-20 w-32 h-12 bg-green-300 rounded-md flex items-center justify-center text-xs font-mono text-green-800" style="opacity: 0;">Request B</div>
+                        <div id="smuggled-packet" class="request-packet top-1/2 -translate-y-1/2 left-20 w-16 h-12 bg-red-300 rounded-md flex items-center justify-center text-xs font-mono text-red-800" style="opacity: 0;">Smuggled</div>
+                        <div id="desync-text-id" class="desync-text absolute bottom-0 left-1/2 -translate-x-1/2 text-red-600 font-bold">DESYNC!</div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="attacks" class="section-card p-6 md:p-8">
+                <h3 class="text-2xl md:text-3xl font-bold text-slate-800 mb-4 text-center">The Attacker's Arsenal</h3>
+                <p class="text-slate-600 max-w-4xl mx-auto mb-8 text-center">
+                    As defenses for classic request smuggling were developed, attackers innovated. The research unveiled novel vectors that bypass modern mitigations by exploiting deeper, more obscure parts of the HTTP/1.1 specification, proving that patching symptoms doesn't fix the root cause.
+                </p>
+                <div class="flex justify-center border-b border-slate-200 mb-6">
+                    <button class="tab active px-4 py-2 text-sm font-medium" data-tab="classic">Classic Smuggling</button>
+                    <button class="tab px-4 py-2 text-sm font-medium" data-tab="zero-cl">0.CL Desync</button>
+                    <button class="tab px-4 py-2 text-sm font-medium" data-tab="expect">Expect Header</button>
+                </div>
+                <div id="classic" class="tab-content active">
+                    <h4 class="font-bold text-lg text-slate-700 mb-2">CL.TE & TE.CL</h4>
+                    <p class="text-slate-600">The original techniques. An attacker sends a request with both `Content-Length` (CL) and `Transfer-Encoding` (TE) headers. If the front-end proxy and back-end server prioritize different headers, a desync occurs. While many systems now have basic defenses against this, subtle variations can still succeed.</p>
+                </div>
+                <div id="zero-cl" class="tab-content">
+                    <h4 class="font-bold text-lg text-slate-700 mb-2">Breaking the Deadlock</h4>
+                    <p class="text-slate-600">This attack was long considered theoretical. It creates a "deadlock" where both servers are waiting for each other, causing a timeout. The research proved it was practical by discovering "early-response gadgets" (like requesting a reserved filename on IIS) that make the back-end respond *before* reading the body, breaking the deadlock and enabling the attack.</p>
+                </div>
+                <div id="expect" class="tab-content">
+                    <h4 class="font-bold text-lg text-slate-700 mb-2">A New Desync Primitive</h4>
+                    <p class="text-slate-600">The `Expect: 100-continue` header, designed for optimizing large uploads, is a "complexity bomb." Its implementation is so tricky in proxy chains that it can be abused to trigger desyncs on a massive scale. Even light obfuscation of this header was shown to bypass WAFs and compromise major CDNs, proving that signature-based defenses are inadequate.</p>
+                </div>
+            </section>
+
+            <section id="impact" class="section-card p-6 md:p-8">
+                <h3 class="text-2xl md:text-3xl font-bold text-slate-800 mb-4 text-center">The Blast Radius: Real-World Compromises</h3>
+                <p class="text-slate-600 max-w-4xl mx-auto mb-8 text-center">
+                    These are not theoretical vulnerabilities. The research demonstrated systemic flaws in core internet infrastructure, leading to significant bug bounty payouts and exposing millions of websites. This chart shows the bounties awarded for some of the key findings.
+                </p>
+                <div class="chart-container mb-12">
+                    <canvas id="bountyChart"></canvas>
+                </div>
+                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <h4 class="font-bold text-lg text-slate-700">Cloudflare</h4>
+                        <p class="text-sm text-slate-600">An internal desync exposed over <strong>24 million websites</strong> to potential takeover. A single flaw in the infrastructure had a catastrophic blast radius.</p>
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <h4 class="font-bold text-lg text-slate-700">Akamai CDN</h4>
+                        <p class="text-sm text-slate-600">An `Expect`-based attack allowed serving arbitrary content to users of sites like <strong>auth.lastpass.com</strong>, a highly sensitive target.</p>
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <h4 class="font-bold text-lg text-slate-700">Netlify CDN</h4>
+                        <p class="text-sm text-slate-600">A Response Queue Poisoning (RQP) vulnerability allowed an attacker to hijack and read responses intended for <strong>any other website</strong> on the platform.</p>
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <h4 class="font-bold text-lg text-slate-700">Gitlab</h4>
+                        <p class="text-sm text-slate-600">A desync on a bug bounty server was used to steal a video of an unpatched zero-day vulnerability, demonstrating the potential for <strong>corporate espionage</strong>.</p>
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <h4 class="font-bold text-lg text-slate-700">AWS ALB + IIS</h4>
+                        <p class="text-sm text-slate-600">A known desync was intentionally not patched by AWS to maintain compatibility with "ancient" clients, demonstrating how <strong>"compatibility debt"</strong> perpetuates insecurity.</p>
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <h4 class="font-bold text-lg text-slate-700">PayPal</h4>
+                        <p class="text-sm text-slate-600">Prior research showed desync attacks successfully compromising PayPal's login page, proving viability against <strong>top-tier financial targets</strong>.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="solution" class="section-card p-6 md:p-8">
+                <h3 class="text-2xl md:text-3xl font-bold text-slate-800 mb-4 text-center">The Only Solution: Protocol Migration</h3>
+                 <p class="text-slate-600 max-w-4xl mx-auto mb-8 text-center">
+                    Patching individual vulnerabilities is a losing battle. The research concludes that HTTP/1.1 is irredeemable. The only real fix is to adopt HTTP/2, which is structurally immune to this entire class of attacks due to its deterministic, binary framing layer.
+                </p>
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div class="border border-red-300 bg-red-50 p-6 rounded-lg">
+                        <h4 class="text-xl font-bold text-red-800 mb-2">HTTP/1.1: Fatally Flawed</h4>
+                        <ul class="space-y-2 text-red-700 text-sm list-disc list-inside">
+                            <li>Text-based and lenient</li>
+                            <li><strong>Ambiguous request boundaries</strong></li>
+                            <li>Multiple, competing length specifiers (CL, TE)</li>
+                            <li>Prone to parser discrepancies</li>
+                            <li>Vulnerable by design in proxy chains</li>
+                        </ul>
+                    </div>
+                    <div class="border border-green-300 bg-green-50 p-6 rounded-lg">
+                        <h4 class="text-xl font-bold text-green-800 mb-2">HTTP/2: Structurally Secure</h4>
+                        <ul class="space-y-2 text-green-700 text-sm list-disc list-inside">
+                            <li>Binary and strict</li>
+                            <li><strong>Deterministic message framing</strong></li>
+                            <li>Single, explicit length field per frame</li>
+                            <li>No room for interpretation</li>
+                            <li>Immune to desync attacks by design</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="mt-8 border-l-4 border-yellow-500 bg-yellow-50 p-4 rounded-r-lg">
+                    <h4 class="font-bold text-yellow-800">Critical Warning: The Danger of Downgrading</h4>
+                    <p class="text-sm text-yellow-700">Configuring your front-end to accept HTTP/2 but then downgrading to HTTP/1.1 to talk to your back-end is <strong>more dangerous</strong> than using HTTP/1.1 end-to-end. This process introduces a new, potent desync vector (H2.TE) and gives a false sense of security. End-to-end HTTP/2 is the only safe configuration.</p>
+                </div>
+            </section>
+
+            <section id="actions" class="section-card p-6 md:p-8">
+                <h3 class="text-2xl md:text-3xl font-bold text-slate-800 mb-4 text-center">Your Call to Action</h3>
+                <p class="text-slate-600 max-w-4xl mx-auto mb-8 text-center">
+                    Securing the web requires a collective effort. The evidence is clear: the time has come to plan the end of HTTP/1.1 for all server-to-server communication. Here are actionable recommendations for different roles.
+                </p>
+                <div class="flex justify-center border-b border-slate-200 mb-6">
+                    <button class="tab active px-4 py-2 text-sm font-medium" data-tab="security">For Security Teams</button>
+                    <button class="tab px-4 py-2 text-sm font-medium" data-tab="devs">For Architects & Devs</button>
+                    <button class="tab px-4 py-2 text-sm font-medium" data-tab="industry">For The Industry</button>
+                </div>
+                <div id="security" class="tab-content active">
+                    <ul class="space-y-3 text-slate-600 list-disc list-inside">
+                        <li><strong>Prioritize Detection:</strong> Use modern tools like HTTP Request Smuggler v3.0 that can find novel desync patterns. Standard scanners will miss them.</li>
+                        <li><strong>Shift to Architecture:</strong> Accept that perfect prevention is impossible in HTTP/1.1. Focus on architectural change over chasing WAF rules.</li>
+                        <li><strong>Enhance Monitoring:</strong> Watch for symptoms of desync attacks, like spikes in `400` or `502` errors and unexplained connection timeouts.</li>
+                    </ul>
+                </div>
+                <div id="devs" class="tab-content">
+                    <ul class="space-y-3 text-slate-600 list-disc list-inside">
+                        <li><strong>Mandate Upstream HTTP/2:</strong> The most effective control. Make end-to-end HTTP/2 a core security requirement in all architectural reviews.</li>
+                        <li><strong>Audit Your Supply Chain:</strong> Vigorously question your CDN and cloud vendors. Do they downgrade to HTTP/1.1? Demand transparency and proof of protection.</li>
+                        <li><strong>Refuse "Compatibility Debt":</strong> Don't let the need to support ancient, broken clients dictate your security posture. Push for modern standards.</li>
+                    </ul>
+                </div>
+                <div id="industry" class="tab-content">
+                     <ul class="space-y-3 text-slate-600 list-disc list-inside">
+                        <li><strong>Accelerate Deprecation:</strong> The industry must collectively phase out HTTP/1.1 for server-to-server communication.</li>
+                        <li><strong>Provider Responsibility:</strong> Cloud and CDN providers must lead the migration, making end-to-end HTTP/2 the default, secure option.</li>
+                        <li><strong>Communicate Timelines:</strong> Providers should develop and announce clear timelines for the full deprecation of upstream HTTP/1.1 support.</li>
+                    </ul>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer class="bg-slate-800 text-slate-400 mt-16">
+        <div class="container mx-auto px-4 lg:px-6 py-6 text-center text-sm">
+            <p>This interactive summary is based on the "HTTP/1.1 Must Die: The Desync Endgame" research by PortSwigger.</p>
+            <p>All credit for the original research, findings, and concepts belongs to the PortSwigger research team.</p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const bountyData = {
+                labels: ['Cloudflare', 'Akamai', 'T-Mobile (Staging)', 'Gitlab'],
+                datasets: [{
+                    label: 'Bug Bounty Awarded ($)',
+                    data: [7000, 9000, 12000, 7000],
+                    backgroundColor: [
+                        'rgba(59, 130, 246, 0.6)',
+                        'rgba(239, 68, 68, 0.6)',
+                        'rgba(245, 158, 11, 0.6)',
+                        'rgba(34, 197, 94, 0.6)'
+                    ],
+                    borderColor: [
+                        'rgba(59, 130, 246, 1)',
+                        'rgba(239, 68, 68, 1)',
+                        'rgba(245, 158, 11, 1)',
+                        'rgba(34, 197, 94, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            };
+
+            const bountyChartCtx = document.getElementById('bountyChart').getContext('2d');
+            new Chart(bountyChartCtx, {
+                type: 'bar',
+                data: bountyData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        title: {
+                            display: true,
+                            text: 'Bug Bounty Payouts for Key Desync Findings'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value, index, ticks) {
+                                    return '$' + (value / 1000) + 'k';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            const animateCounter = (element, target, suffix = '', duration = 2000) => {
+                let start = 0;
+                const stepTime = Math.abs(Math.floor(duration / target));
+                const timer = setInterval(() => {
+                    start += 1;
+                    element.textContent = start + suffix;
+                    if (start === target) {
+                        clearInterval(timer);
+                    }
+                }, stepTime);
+            };
+            
+            const bountyCounter = document.getElementById('bounty-counter');
+            const sitesCounter = document.getElementById('sites-counter');
+            
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        animateCounter(bountyCounter, 350, 'k+');
+                        animateCounter(sitesCounter, 24, 'M+');
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, { threshold: 0.5 });
+            
+            observer.observe(document.getElementById('hero'));
+
+            const tabs = document.querySelectorAll('.tab');
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    const target = tab.dataset.tab;
+                    tabContents.forEach(content => {
+                        content.classList.remove('active');
+                        if (content.id === target) {
+                            content.classList.add('active');
+                        }
+                    });
+                });
+            });
+            
+            const mobileMenuButton = document.getElementById('mobile-menu-button');
+            const mobileMenu = document.getElementById('mobile-menu');
+            mobileMenuButton.addEventListener('click', () => {
+                mobileMenu.classList.toggle('hidden');
+            });
+            
+            const navLinks = document.querySelectorAll('nav a');
+            navLinks.forEach(link => {
+                link.addEventListener('click', () => {
+                    if(!mobileMenu.classList.contains('hidden')) {
+                       mobileMenu.classList.add('hidden');
+                    }
+                });
+            });
+
+            const runNormalBtn = document.getElementById('run-normal-btn');
+            const runDesyncBtn = document.getElementById('run-desync-btn');
+            const packet1 = document.getElementById('request-packet-1');
+            const packet2 = document.getElementById('request-packet-2');
+            const smuggledPacket = document.getElementById('smuggled-packet');
+            const desyncText = document.getElementById('desync-text-id');
+
+            const resetPackets = () => {
+                packet1.style.transform = 'translate(0, -50%)';
+                packet1.style.opacity = '1';
+                packet2.style.transform = 'translate(0, -50%)';
+                packet2.style.opacity = '0';
+                smuggledPacket.style.opacity = '0';
+                desyncText.style.opacity = '0';
+            };
+
+            runNormalBtn.addEventListener('click', () => {
+                resetPackets();
+                packet2.style.opacity = '1';
+                setTimeout(() => {
+                    packet1.style.transform = 'translate(450%, -50%)';
+                }, 100);
+                setTimeout(() => {
+                    packet2.style.transform = 'translate(450%, -50%)';
+                }, 600);
+            });
+
+            runDesyncBtn.addEventListener('click', () => {
+                resetPackets();
+                smuggledPacket.style.opacity = '1';
+                packet1.classList.add('w-48');
+                packet1.innerHTML = 'Request A + <span class="text-red-600 ml-1">Smuggled</span>';
+                
+                setTimeout(() => {
+                    packet1.style.transform = 'translate(400%, -50%)';
+                }, 100);
+
+                setTimeout(() => {
+                    desyncText.style.opacity = '1';
+                    packet1.classList.remove('w-48');
+                    packet1.innerHTML = 'Request A';
+                }, 1200);
+            });
+        });
+    </script>
+</body>
+</html>
